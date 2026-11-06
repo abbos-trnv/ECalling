@@ -1,0 +1,84 @@
+name: voice-analytics
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: voice
+      POSTGRES_PASSWORD: voice_local_demo
+      POSTGRES_DB: voice_analytics
+    ports:
+      - "127.0.0.1:15432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U voice -d voice_analytics"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+  api:
+    image: voice-analytics-api:local
+    build:
+      context: ..
+      dockerfile: infra/api.Dockerfile
+    environment:
+      DATABASE_URL: postgresql://voice:voice_local_demo@db:5432/voice_analytics
+      PROFILE: mock
+      AUDIO_ROOT: /data/audio
+      MAX_UPLOAD_BYTES: ${MAX_UPLOAD_BYTES:-52428800}
+      MAX_DURATION_SECONDS: ${MAX_DURATION_SECONDS:-1800}
+    volumes:
+      - audio_data:/data/audio
+    ports:
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready')"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+  migrate:
+    image: voice-analytics-api:local
+    build:
+      context: ..
+      dockerfile: infra/api.Dockerfile
+    environment:
+      DATABASE_URL: postgresql://voice:voice_local_demo@db:5432/voice_analytics
+    command: ["alembic", "upgrade", "head"]
+    depends_on:
+      db:
+        condition: service_healthy
+  worker:
+    image: voice-analytics-api:local
+    environment:
+      DATABASE_URL: postgresql://voice:voice_local_demo@db:5432/voice_analytics
+      AUDIO_ROOT: /data/audio
+      MEDIA_TIMEOUT_SECONDS: ${MEDIA_TIMEOUT_SECONDS:-120}
+      JOB_LEASE_SECONDS: ${JOB_LEASE_SECONDS:-60}
+      WORKER_POLL_SECONDS: ${WORKER_POLL_SECONDS:-2}
+    volumes:
+      - audio_data:/data/audio
+    command: ["python", "-m", "apps.worker"]
+    restart: unless-stopped
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      db:
+        condition: service_healthy
+  web:
+    build:
+      context: ..
+      dockerfile: infra/web.Dockerfile
+    environment:
+      API_PROXY_TARGET: http://api:8000
+    ports:
+      - "127.0.0.1:5173:5173"
+    depends_on:
+      api:
+        condition: service_healthy
+volumes:
+  postgres_data:
+  audio_data:

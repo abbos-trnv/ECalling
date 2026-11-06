@@ -1,0 +1,10 @@
+{
+  "version": "demo-v1",
+  "criteria": [
+    {"key": "greeting", "title": "Менеджер поздоровался", "weight": 10},
+    {"key": "introduction", "title": "Назвал компанию или имя", "weight": 15},
+    {"key": "needs_discovery", "title": "Уточнил потребность", "weight": 25},
+    {"key": "objection_handling", "title": "Ответил на возражение", "weight": 30},
+    {"key": "next_step", "title": "Назначил следующий шаг", "weight": 20}
+  ]
+}
